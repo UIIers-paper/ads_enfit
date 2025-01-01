@@ -16,3 +16,4 @@ __init__.py
 wandb
 *.h5
 *.keras
+.env
