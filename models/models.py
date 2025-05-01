@@ -107,6 +107,68 @@ class GRU_model:
 
 
 
+
+class TCNBlock(layers.Layer):
+    def __init__(self, n_filters, kernel_size, dilation_rate, dropout_rate=0.2):
+        super().__init__()
+        self.conv1 = layers.Conv1D(
+            filters=n_filters,
+            kernel_size=kernel_size,
+            strides=1,
+            padding='causal',
+            dilation_rate=dilation_rate,
+            activation='relu'
+        )
+        self.dropout1 = layers.Dropout(dropout_rate)
+        self.conv2 = layers.Conv1D(
+            filters=n_filters,
+            kernel_size=kernel_size,
+            strides=1,
+            padding='causal',
+            dilation_rate=dilation_rate,
+            activation='relu'
+        )
+        self.dropout2 = layers.Dropout(dropout_rate)
+        self.residual = layers.Conv1D(n_filters, 1)  # Thay đổi số lượng filter nếu cần
+
+    def call(self, inputs, training=False):
+        x = self.conv1(inputs)
+        x = self.dropout1(x, training=training)
+        x = self.conv2(x)
+        x = self.dropout2(x, training=training)
+        res = self.residual(inputs)
+        return layers.Activation('relu')(x + res)
+
+class TCN_model:
+    def __init__(self, input_shape):
+        self.features = None
+        self.input_shape = input_shape
+        self.model = self.build_models()
+
+    def build_models(self):
+        inputs = Input(shape=self.input_shape)
+        x = layers.Conv1D(64, kernel_size=3, padding='causal')(inputs)
+        
+        dilation_rates = [1, 2, 4, 8]
+        for rate in dilation_rates:
+            x = TCNBlock(n_filters=64, kernel_size=3, dilation_rate=rate, dropout_rate=0.2)(x)
+
+        x = layers.GlobalAveragePooling1D()(x)
+
+        x = layers.Dense(256, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        x = layers.Dense(64, activation='relu')(x)
+        x = layers.Dropout(0.4)(x)
+        self.features = layers.Dense(32, activation='relu')(x)  # Giống GRU_model
+        x = layers.Dropout(0.2)(self.features)
+        
+        outputs = layers.Dense(1, activation='linear')(x)  # Đầu ra cho regression
+        
+        model = Model(inputs, outputs, name='TCN_Model')
+        model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        return model
 class Combine_model:
     def __init__(self,encoder, classification, lr=0.0001):
         self.model1 = encoder.model
@@ -121,3 +183,6 @@ class Combine_model:
         combined_model = Model(inputs=combined_input, outputs=output, name='combined_model')
         # combined_model.compile(optimizer=Adam(learning_rate=self.lr), loss='mae', metrics=['mae', r2])
         return combined_model
+    
+
+
